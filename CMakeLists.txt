@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # Set your project name. This will be the name of your SKSE .dll file.
-project(TemplatePlugin VERSION 0.0.1 LANGUAGES CXX)
+project(OutfitPlaylist VERSION 0.0.1 LANGUAGES CXX)
 
 #
 
@@ -35,6 +35,7 @@ endif()
 
 # Setup your SKSE plugin as an SKSE plugin!
 find_package(CommonLibSSE CONFIG REQUIRED)
+include(cmake/user.cmake)
 include(cmake/headerlist.cmake)
 include(cmake/sourcelist.cmake)
 add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${sources}) # <--- specifies plugin.cpp
