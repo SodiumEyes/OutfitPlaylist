@@ -59,7 +59,7 @@ namespace OutfitPlaylist
 
 		//Load config
 		Json::Reader reader;
-		std::ifstream config_file("Data/SKSE/Plugins/OutfitPlaylist/Config.cfg");
+		std::ifstream config_file("Data/SKSE/Plugins/OutfitPlaylistConfig.json");
 		Json::Value config_json;
 		reader.parse(config_file, config_json);
 
@@ -390,8 +390,12 @@ namespace OutfitPlaylist
 			outfit_out.forms.push_back(form);
 		}
 
-		if (outfit_out.name.empty())
-			outfit_out.name = "CustomOutfit";
+		if (outfit_out.name.empty()) {
+			if (outfit_out.forms.empty())
+				outfit_out.name = "Naked";
+			else
+				outfit_out.name = "CustomOutfit";
+		}
 
 		return true;
 	}
@@ -446,6 +450,25 @@ namespace OutfitPlaylist
 		}
 
 		return unique_name;
+	}
+
+	bool outfitFormsAreTheSame(Outfit& outfit1, Outfit& outfit2) {
+		if (outfit1.forms.size() != outfit2.forms.size())
+			return false;
+
+		for (unsigned int i = 0u; i < outfit1.forms.size(); i++) {
+			bool found = false;
+			for (unsigned int k = 0u; k < outfit2.forms.size(); k++) {
+				if (outfit2.forms[k] == outfit1.forms[i]) {
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+				return false;
+		}
+
+		return true;
 	}
 
 	//Papyrus
@@ -555,6 +578,13 @@ namespace OutfitPlaylist
 		if (group_it == sOutfitGroups.end()) {
 			group_it = sOutfitGroups.insert(std::pair<std::string, OutfitGroup>(group_name, OutfitGroup())).first;
 			group_it->second.name = group_name;
+		}
+
+		//Check if the outfit already exists in the group
+		for (unsigned int i = 0u; i < group_it->second.outfitIndices.size(); i++) {
+			Outfit& existing = sOutfits[group_it->second.outfitIndices[i]];
+			if (outfitFormsAreTheSame(outfit, existing))
+				return false;
 		}
 
 		//Add a new outfit and assign it to the group
