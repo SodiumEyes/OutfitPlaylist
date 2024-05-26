@@ -13,6 +13,8 @@ namespace OutfitPlaylist
 		std::string name;
 		std::string groupName;
 		FormVec forms;
+		bool doNotRemove;
+		Outfit();
 	};
 
 	struct OutfitGroup
@@ -27,7 +29,7 @@ namespace OutfitPlaylist
 	void OnGameSaved(SKSE::SerializationInterface* serde);
 
 	//Outfits
-	Outfit* setOutfit(RE::Actor* actor, unsigned int index, bool save_forms=true);
+	Outfit* setOutfit(RE::Actor* actor, unsigned int index, bool do_not_remove=false);
 	void clearOutfit(RE::Actor* actor, FormVec* forms_out = NULL);
 
 	bool outfitFormsAreTheSame(Outfit& outfit1, Outfit& outfit2);

@@ -33,6 +33,9 @@ namespace OutfitPlaylist
 
 	inline const auto OutfitPlaylistRecord = _byteswap_ulong('OPLE');
 
+	Outfit::Outfit()
+		: doNotRemove(false) {}
+
 	//Util
 	template <class FormT>
 	bool LookupForm(RE::FormID form_id, const std::string& mod_name, FormT*& out)
@@ -190,6 +193,7 @@ namespace OutfitPlaylist
 						Outfit outfit;
 						SKSEUtil::tryGetString((*it)["name"], outfit.name);
 						SKSEUtil::tryGetString((*it)["group"], outfit.groupName);
+						SKSEUtil::tryGetBool((*it)["doNotRemove"], outfit.doNotRemove);
 						Json::Value& forms_json = (*it)["forms"];
 
 						for (unsigned int i = 0u; i < forms_json.size(); i++) {
@@ -246,6 +250,7 @@ namespace OutfitPlaylist
 			Json::Value& actor_outfit_json = actor_outfits_json[SKSEUtil::hexToString(it->first)];
 			actor_outfit_json["name"] = it->second.name;
 			actor_outfit_json["group"] = it->second.groupName;
+			actor_outfit_json["doNotSave"] = it->second.doNotRemove;
 
 			if (!it->second.forms.empty()) {
 				Json::Value& forms_json = actor_outfit_json["forms"];
@@ -261,7 +266,7 @@ namespace OutfitPlaylist
 
 	//Outfits
 
-	Outfit* setOutfit(Actor* actor, unsigned int index, bool save_forms)
+	Outfit* setOutfit(Actor* actor, unsigned int index, bool do_not_remove)
 	{
 		if (!actor)
 			return NULL;
@@ -272,8 +277,7 @@ namespace OutfitPlaylist
 			log::info("Setting actor {} outfit to {}", actor->GetName(), outfit.name);
 
 			sActorEquippedOutfits[actor->formID] = outfit;
-			if (!save_forms)
-				sActorEquippedOutfits[actor->formID].forms.clear();
+			sActorEquippedOutfits[actor->formID].doNotRemove = do_not_remove;
 			return &outfit;
 		}
 
@@ -288,8 +292,18 @@ namespace OutfitPlaylist
 		log::info("Removing existing outfit");
 		ActorOutfitMap::iterator it = sActorEquippedOutfits.find(actor->formID);
 		if (it != sActorEquippedOutfits.end()) {
-			if (forms_out)
-				*forms_out = it->second.forms;
+			if (forms_out) {
+				forms_out->clear();
+				if (it->second.doNotRemove) {
+					forms_out->reserve(it->second.forms.size() + 1);
+					forms_out->push_back(NULL);
+				}
+				else
+					forms_out->reserve(it->second.forms.size());
+
+				for (std::size_t i = 0u; i < it->second.forms.size(); i++)
+					forms_out->push_back(it->second.forms[i]);
+			}
 
 			sActorEquippedOutfits.erase(it);
 		}
@@ -600,7 +614,7 @@ namespace OutfitPlaylist
 		group_it->second.outfitIndices.push_back(outfit_index);
 
 		saveGroupFile(group_it->second); //Save the group file
-		setOutfit(actor, outfit_index, false); //Update the actor outfit
+		setOutfit(actor, outfit_index, true); //Update the actor outfit
 
 		return true;
 	}
@@ -625,7 +639,7 @@ namespace OutfitPlaylist
 
 		sOutfits[outfit_index].forms = outfit.forms;  //Replace the formlist for the outfit
 		saveGroupFile(group_it->second); //Save the group file
-		setOutfit(actor, outfit_index, false); //Update the actor outfit
+		setOutfit(actor, outfit_index, true); //Update the actor outfit
 
 		return true;
 	}
@@ -647,7 +661,7 @@ namespace OutfitPlaylist
 
 		sOutfits[outfit_index].name = makeNameUniqueForGroup(group_it->second, name, equipped_outfit->name);  //Update the outfit name
 		saveGroupFile(group_it->second); //Save the group file
-		setOutfit(actor, outfit_index); //Update the actor outfit
+		setOutfit(actor, outfit_index, equipped_outfit->doNotRemove); //Update the actor outfit
 
 		return true;
 	}
