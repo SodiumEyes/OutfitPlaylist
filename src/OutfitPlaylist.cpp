@@ -250,7 +250,7 @@ namespace OutfitPlaylist
 			Json::Value& actor_outfit_json = actor_outfits_json[SKSEUtil::hexToString(it->first)];
 			actor_outfit_json["name"] = it->second.name;
 			actor_outfit_json["group"] = it->second.groupName;
-			actor_outfit_json["doNotSave"] = it->second.doNotRemove;
+			actor_outfit_json["doNotRemove"] = it->second.doNotRemove;
 
 			if (!it->second.forms.empty()) {
 				Json::Value& forms_json = actor_outfit_json["forms"];
