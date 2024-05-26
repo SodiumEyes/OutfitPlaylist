@@ -4,7 +4,9 @@ set(sources ${sources}
 	src/OutfitPlaylist.cpp
 
 	${NG_UTIL_DIR}/src/ActorUtil.cpp
+	${NG_UTIL_DIR}/src/FormUtil.cpp
 	${NG_UTIL_DIR}/src/FormIDUtil.cpp
+	${NG_UTIL_DIR}/src/JSONUtil.cpp
 	${NG_UTIL_DIR}/src/MathUtil.cpp
 	${NG_UTIL_DIR}/src/StringUtil.cpp
 

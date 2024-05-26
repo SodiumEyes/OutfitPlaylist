@@ -27,7 +27,7 @@ namespace OutfitPlaylist
 	void OnGameSaved(SKSE::SerializationInterface* serde);
 
 	//Outfits
-	Outfit* setOutfit(RE::Actor* actor, unsigned int index);
+	Outfit* setOutfit(RE::Actor* actor, unsigned int index, bool save_forms=true);
 	void clearOutfit(RE::Actor* actor, FormVec* forms_out = NULL);
 
 	bool outfitFormsAreTheSame(Outfit& outfit1, Outfit& outfit2);

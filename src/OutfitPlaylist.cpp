@@ -3,6 +3,7 @@
 #include "SKSEUtil/MathUtil.h"
 #include "SKSEUtil/ActorUtil.h"
 #include "SKSEUtil/StringUtil.h"
+#include "SKSEUtil/JSONUtil.h"
 #include <filesystem>
 #include <random>
 
@@ -159,106 +160,108 @@ namespace OutfitPlaylist
 		while (serde->GetNextRecordInfo(type, version, size))
 		{
 			if (type == OutfitPlaylistRecord) {
-				unsigned int num_saved_actors;
-				serde->ReadRecordData(&num_saved_actors, sizeof(num_saved_actors));
-				log::info("Reading saved actor outfits for {} actors", num_saved_actors);
 
-				for (unsigned int actor_index = 0u; actor_index < num_saved_actors; actor_index++) {
-					Actor* actor = NULL;
-					FormID actor_form_id;
-					serde->ReadRecordData(&actor_form_id, sizeof(actor_form_id));
+				Json::Value save_json;
+				if (SKSEUtil::deserializeJsonFromRecord(serde, save_json) && save_json.isObject()) {
+					/*
+					Json::StyledWriter writer;
+					log::info("{}", writer.write(save_json));
+					*/
 
-					RE::FormID resolved_actor_form_id;
-					if (!serde->ResolveFormID(actor_form_id, resolved_actor_form_id))
-						log::error("Actor ID {:X} could not be found after loading the save.", actor_form_id);
-					else {
-						actor = TESForm::LookupByID<Actor>(resolved_actor_form_id);
-						if (actor)
-							log::info("Actor {}", actor->GetName());
-						else
-							log::error("Actor not found {:X}", resolved_actor_form_id);
-					}
+					log::info("Reading saved actor outfits");
 
-					Outfit outfit;
+					Json::Value& actor_outfits_json = save_json["actorOutfits"];
+					for (Json::ValueIterator it = actor_outfits_json.begin(); it != actor_outfits_json.end(); ++it)
+					{
+						RE::FormID actor_form_id = SKSEUtil::stringToHex(it.key().asCString());
+						if (serde) {
+							if (!serde->ResolveFormID(actor_form_id, actor_form_id)) {
+								log::error("Failed to resolve actor FormID {:X}", actor_form_id);
+								continue;
+							}
+						}
 
-					unsigned int outfit_name_size;
-					serde->ReadRecordData(&outfit_name_size, sizeof(outfit_name_size));
-					char* outfit_name_c_str = new char[outfit_name_size + 1];
-					serde->ReadRecordData(outfit_name_c_str, outfit_name_size);
-					outfit_name_c_str[outfit_name_size] = '\0';
+						RE::Actor* actor = RE::TESForm::LookupByID<RE::Actor>(actor_form_id);
+						if (!actor) {
+							log::error("Actor not found {:X}", actor_form_id);
+							continue;
+						}
 
-					unsigned int outfit_group_size;
-					serde->ReadRecordData(&outfit_group_size, sizeof(outfit_group_size));
-					char* outfit_group_c_str = new char[outfit_group_size + 1];
-					serde->ReadRecordData(outfit_group_c_str, outfit_group_size);
-					outfit_group_c_str[outfit_group_size] = '\0';
-					
-					outfit.name = outfit_name_c_str;
-					outfit.groupName = outfit_group_c_str;
-					delete[] outfit_name_c_str;
-					delete[] outfit_group_c_str;
-					log::info("Outfit {}.{}", outfit.groupName, outfit.name);
+						Outfit outfit;
+						SKSEUtil::tryGetString((*it)["name"], outfit.name);
+						SKSEUtil::tryGetString((*it)["group"], outfit.groupName);
+						Json::Value& forms_json = (*it)["forms"];
 
-					unsigned int num_forms;
-					serde->ReadRecordData(&num_forms, sizeof(num_forms));
-					for (unsigned int i = 0u; i < num_forms; i++) {
-						FormID form_id;
-						serde->ReadRecordData(&form_id, sizeof(form_id));
-						RE::FormID resolved_form_id;
-						if (!serde->ResolveFormID(form_id, resolved_form_id))
-							log::error("Outfit form {:X} could not be found after loading the save.", resolved_form_id);
-						else {
-							TESForm* form = TESForm::LookupByID<TESForm>(resolved_form_id);
+						for (unsigned int i = 0u; i < forms_json.size(); i++) {
+							RE::FormID form_id = forms_json[i].asUInt();
+							if (!serde->ResolveFormID(form_id, form_id)) {
+								log::error("Failed to resolve FormID {:X}", form_id);
+								continue;
+							}
+
+							TESForm* form = TESForm::LookupByID<TESForm>(form_id);
 							if (form) {
-								log::info("Outfit form {}", form->GetName());
+								//log::info("Outfit form {}", form->GetName());
 								outfit.forms.push_back(form);
-							} else
-								log::error("Outfit form not found {:X}", resolved_form_id);
+							}
+							else
+								log::error("Outfit form not found {:X}", form_id);
+						}
+
+						if (actor && !outfit.name.empty() && !outfit.groupName.empty()) {
+							sActorEquippedOutfits[actor->formID] = outfit;
+							log::info("Loaded outfit for {}", actor->GetActorBase()->GetName());
+						}
+						else {
+							log::warn("Invalid outfit save for {}", actor->GetActorBase()->GetName());
 						}
 					}
-
-					if (actor && !outfit.forms.empty())
-						sActorEquippedOutfits[actor->formID] = outfit;
 				}
+				else
+					log::info("No save JSON");
 			}
 		}
 	}
 
 	void OnGameSaved(SKSE::SerializationInterface* serde)
 	{
-		log::info("Saving actor outfits");
+		if (sActorEquippedOutfits.empty())
+			return;
 
 		if (!serde->OpenRecord(OutfitPlaylistRecord, SAVE_VERSION)) {
 			log::error("Unable to open record to write cosave data.");
 			return;
 		}
 
-		unsigned int num_saved_actors = sActorEquippedOutfits.size();
-		serde->WriteRecordData(&num_saved_actors, sizeof(num_saved_actors));
-		for (ActorOutfitMap::iterator it = sActorEquippedOutfits.begin(); it != sActorEquippedOutfits.end(); ++it) {
-			FormID a_fid = it->first;
-			Outfit& outfit = it->second;
-			serde->WriteRecordData(&a_fid, sizeof(a_fid));
-			unsigned int outfit_name_size = std::strlen(outfit.name.c_str());
-			serde->WriteRecordData(&outfit_name_size, sizeof(outfit_name_size));
-			serde->WriteRecordData(outfit.name.c_str(), outfit_name_size);
+		log::info("Saving actor outfits");
 
-			unsigned int outfit_group_size = std::strlen(outfit.groupName.c_str());
-			serde->WriteRecordData(&outfit_group_size, sizeof(outfit_group_size));
-			serde->WriteRecordData(outfit.groupName.c_str(), outfit_group_size);
-			
-			unsigned int num_forms = outfit.forms.size();
-			serde->WriteRecordData(&num_forms, sizeof(num_forms));
-			for (unsigned int i = 0u; i < outfit.forms.size(); i++)
-				serde->WriteRecordData(&outfit.forms[i]->formID, sizeof(outfit.forms[i]->formID));
+		Json::Value save_json;
+		Json::Value& actor_outfits_json = save_json["actorOutfits"];
+		for (ActorOutfitMap::iterator it = sActorEquippedOutfits.begin(); it != sActorEquippedOutfits.end(); ++it)
+		{
+			RE::Actor* actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
+			if (!actor)
+				continue;
+
+			Json::Value& actor_outfit_json = actor_outfits_json[SKSEUtil::hexToString(it->first)];
+			actor_outfit_json["name"] = it->second.name;
+			actor_outfit_json["group"] = it->second.groupName;
+
+			if (!it->second.forms.empty()) {
+				Json::Value& forms_json = actor_outfit_json["forms"];
+				for (std::size_t i = 0u; i < it->second.forms.size(); i++)
+					forms_json.append(it->second.forms[i]->formID);
+			}
+
+			log::info("Saved outfit for {}", actor->GetActorBase()->GetName());
 		}
 
-		log::info("Saved actor outfits");
+		SKSEUtil::serializeJsonToRecord(serde, save_json);
 	}
 
 	//Outfits
 
-	Outfit* setOutfit(Actor* actor, unsigned int index)
+	Outfit* setOutfit(Actor* actor, unsigned int index, bool save_forms)
 	{
 		if (!actor)
 			return NULL;
@@ -269,6 +272,8 @@ namespace OutfitPlaylist
 			log::info("Setting actor {} outfit to {}", actor->GetName(), outfit.name);
 
 			sActorEquippedOutfits[actor->formID] = outfit;
+			if (!save_forms)
+				sActorEquippedOutfits[actor->formID].forms.clear();
 			return &outfit;
 		}
 
@@ -595,7 +600,7 @@ namespace OutfitPlaylist
 		group_it->second.outfitIndices.push_back(outfit_index);
 
 		saveGroupFile(group_it->second); //Save the group file
-		setOutfit(actor, outfit_index); //Update the actor outfit
+		setOutfit(actor, outfit_index, false); //Update the actor outfit
 
 		return true;
 	}
@@ -620,7 +625,7 @@ namespace OutfitPlaylist
 
 		sOutfits[outfit_index].forms = outfit.forms;  //Replace the formlist for the outfit
 		saveGroupFile(group_it->second); //Save the group file
-		setOutfit(actor, outfit_index); //Update the actor outfit
+		setOutfit(actor, outfit_index, false); //Update the actor outfit
 
 		return true;
 	}
